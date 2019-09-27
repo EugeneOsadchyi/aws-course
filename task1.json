@@ -1,0 +1,57 @@
+{
+  "Description": "Creates AutoScaling group with two EC2 instances",
+  "Parameters": {
+    "InstanceType": {
+      "Description": "Amazon EC2 Instance Type",
+      "Type": "String",
+      "Default": "t2.micro",
+      "AllowedValues": ["t2.nano", "t2.micro"]
+    },
+    "KeyName": {
+      "Description": "Amazon EC2 Key Pair",
+      "Type": "AWS::EC2::KeyPair::KeyName"
+    }
+  },
+  "Resources": {
+    "SecurityGroup": {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "GroupDescription": "Allow SSH Traffic",
+        "SecurityGroupIngress": {
+          "IpProtocol": "tcp",
+          "FromPort": 22,
+          "ToPort": 22,
+          "CidrIp": "0.0.0.0/0"
+        }
+      }
+    },
+    "LaunchTemplate": {
+      "Type" : "AWS::EC2::LaunchTemplate",
+      "Properties" : {
+        "LaunchTemplateData": {
+          "ImageId": "ami-00a1270ce1e007c27",
+          "InstanceType": { "Ref": "InstanceType" },
+          "KeyName": { "Ref": "KeyName" },
+          "SecurityGroups": [
+            { "Ref": "SecurityGroup" }
+          ]
+        },
+        "LaunchTemplateName": "Task-1-LaunchTemplate"
+      }
+    },
+    "AutoScalingGroup": {
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "Properties": {
+        "AvailabilityZones":{
+          "Fn::GetAZs":""
+        },
+        "LaunchTemplate": {
+          "LaunchTemplateId": { "Ref": "LaunchTemplate" },
+          "Version": "1"
+        },
+        "MinSize": "2",
+        "MaxSize": "2"
+      }
+    }
+  }
+}
