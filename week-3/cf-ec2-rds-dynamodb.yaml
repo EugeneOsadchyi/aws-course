@@ -1,0 +1,132 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Description: Creates DynamoDB, RDS and EC2 instances
+
+Parameters:
+  KeyName:
+    Description: Amazon EC2 Key Pair
+    Type: AWS::EC2::KeyPair::KeyName
+  DBUsername:
+    Description: Database username
+    Type: String
+  DBPassword:
+    Description: Database password
+    Type: String
+    NoEcho: true
+
+Resources:
+  DynamoDbTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+      - AttributeName: UserName
+        AttributeType: S
+      KeySchema:
+      - AttributeName: UserName
+        KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      TableName: AwsTrainingUsers
+
+  MySqlRds:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: 20
+      DBInstanceClass: db.t2.micro
+      BackupRetentionPeriod: 0
+      DBName: aws_training
+      Engine: MySQL
+      EngineVersion: "8.0.16"
+      MasterUsername: aws_user
+      MasterUserPassword: aws-user-password
+      VPCSecurityGroups:
+        - !GetAtt RdsSecurityGroup.GroupId
+
+  IamInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+      - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+
+  IamInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+      - !Ref IamInstanceRole
+
+  Ec2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH Traffic
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+
+  RdsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Open database for access
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 3306
+        ToPort: 3306
+        SourceSecurityGroupId: !GetAtt Ec2SecurityGroup.GroupId
+
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: Task-3-LaunchTemplate
+      LaunchTemplateData:
+        ImageId: ami-00a1270ce1e007c27
+        InstanceType: t2.nano
+        IamInstanceProfile:
+          Name: !Ref IamInstanceProfile
+        KeyName: !Ref KeyName
+        SecurityGroups:
+        - !Ref Ec2SecurityGroup
+        UserData:
+          Fn::Base64:
+            Fn::Join:
+            - "\n"
+            - - "#!/bin/bash"
+              - "yum install -y mysql"
+              - ""
+              - "aws s3 cp s3://eosadchyi/dynamodb-script.sh ."
+              - "aws s3 cp s3://eosadchyi/rds-script.sql ."
+
+  Ec2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: '1'
+    DependsOn:
+      - MySqlRds
+      - DynamoDbTable
+
+Outputs:
+  MySqlClient:
+    Description: MySQL Connection command
+    Value:
+      Fn::Join:
+        - " "
+        - - "mysql"
+          - "-h"
+          - !GetAtt MySqlRds.Endpoint.Address
+          - "-P"
+          - !GetAtt MySqlRds.Endpoint.Port
+          - "-u"
+          - !Ref DBUsername
+          - "-p"
