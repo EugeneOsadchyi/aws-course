@@ -1,0 +1,111 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Description: Creates SQS topic and SNS subscription for EC2
+Parameters:
+  KeyName:
+    Description: Amazon EC2 Key Pair
+    Type: AWS::EC2::KeyPair::KeyName
+
+  SubscriptionEmail:
+    Description: Subscription Email
+    Type: String
+    Default: yosadchyi@lohika.com
+
+Resources:
+  QueueService:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: Lohika-Training-Queue
+
+  NotificationServiceTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Endpoint: !Ref SubscriptionEmail
+          Protocol: email
+      TopicName: Lohika-Training-Topic
+
+  IamInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+        - arn:aws:iam::aws:policy/AmazonSNSFullAccess
+        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
+
+  IamInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+      - !Ref IamInstanceRole
+
+  Ec2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH Traffic
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-00a1270ce1e007c27
+      InstanceType: t2.nano
+      IamInstanceProfile: !Ref IamInstanceProfile
+      KeyName: !Ref KeyName
+      SecurityGroups:
+        - !Ref Ec2SecurityGroup
+      UserData:
+        Fn::Base64:
+          Fn::Join:
+            - "\n"
+            - - "#!/bin/bash"
+              - "aws s3 cp s3://eosadchyi/sns-script.sh ."
+              - "aws s3 cp s3://eosadchyi/sqs-script.sh ."
+              - "chmod +x sns-script.sh"
+              - "chmod +x sqs-script.sh"
+      Tags:
+        - Key: Name
+          Value: SNS/SQS Instance
+
+Outputs:
+  SnsTopicArn:
+    Description: SNS Topic Arn
+    Value: !Ref NotificationServiceTopic
+
+  QueueUrl:
+    Description: SQS QueueUrl
+    Value: !Ref QueueService
+
+  SnsCommand:
+    Description: SNS Test command
+    Value:
+      Fn::Join:
+        - " "
+        - - "./sns-script.sh"
+          - "--topic-arn"
+          - !Ref NotificationServiceTopic
+          - "--message"
+          - "My test message"
+
+  SqsCommand:
+    Description: SQS Test command
+    Value:
+      Fn::Join:
+        - " "
+        - - "./sqs-script.sh"
+          - "--queue-url"
+          - !Ref QueueService
+          - "--message-body"
+          - "My test message"
