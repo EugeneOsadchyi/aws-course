@@ -1,0 +1,8 @@
+[Unit]
+Description=Starts backend Java application
+
+[Service]
+ExecStart=/usr/bin/java -jar /persist3-0.0.1-SNAPSHOT.jar
+
+[Install]
+WantedBy=multi-user.target
